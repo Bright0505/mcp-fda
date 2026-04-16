@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "mcp-fda": {
+      "type": "stdio",
+      "command": "/path/to/mcp-fda/.venv/bin/python3",
+      "args": ["/path/to/mcp-fda/src/main.py"],
+      "env": {
+        "PYTHONPATH": "/path/to/mcp-fda/src",
+        "LLM_BASE_URL": "https://api.openai.com/v1",
+        "LLM_API_KEY": "sk-...",
+        "LLM_MODEL": "gpt-4o-mini",
+        "GRAPHRAG_DB_TYPE": "sqlite",
+        "GRAPHRAG_SQLITE_PATH": "/path/to/mcp-fda/data/graphrag.db",
+        "FDA_API_BASE": "https://api.fda.gov",
+        "FDA_CACHE_TTL_DAYS": "30",
+        "TOOL_PREFIX": "drug",
+        "MCP_SERVER_NAME": "mcp-fda"
+      }
+    }
+  }
+}

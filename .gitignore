@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+dist/
+build/
+*.egg-info/
+
+# 測試
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 環境與機密
+.env
+.mcp.json
+
+# 執行時資料
+data/
+logs/
+
+# 編輯器 / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Claude Code
+.claude/

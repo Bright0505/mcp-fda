@@ -1,0 +1,19 @@
+services:
+  mcp-fda:
+    build:
+      context: .
+      target: development
+    container_name: mcp-fda-dev
+    env_file:
+      - .env
+    volumes:
+      - ./src:/app/src
+      - ./logs:/app/logs
+      - mcp_fda_data:/app/data
+    ports:
+      - "${HTTP_PORT:-8000}:8000"
+    command: ["python", "src/main.py", "--http"]
+    restart: unless-stopped
+
+volumes:
+  mcp_fda_data:
