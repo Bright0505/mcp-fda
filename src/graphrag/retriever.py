@@ -38,6 +38,39 @@ async def get_entity_ids(
     return result
 
 
+def format_passthrough_report(
+    drug_results: List[dict],
+) -> str:
+    """直通模式：將 FDA 原文整理為 Markdown，供呼叫端 LLM 解讀。"""
+    lines: List[str] = []
+    lines.append("> ℹ️ **直通模式**：LLM 未設定，以下為 FDA 原始資料，請依臨床判斷評估交互作用風險。")
+    lines.append("")
+
+    for item in drug_results:
+        name = item.get("generic_name", "")
+        status = item.get("status", "")
+        raw = item.get("raw_text")
+
+        lines.append(f"### {name.upper()}")
+
+        if status == "cached":
+            lines.append("_(快取)_")
+        if status == "not_found":
+            lines.append("_FDA 查無此藥品資料。_")
+        elif status == "ok_no_interactions":
+            lines.append("_FDA 標籤中無 drug interactions 段落。_")
+        elif status == "error":
+            lines.append(f"_查詢失敗：{item.get('error')}_")
+        elif raw:
+            lines.append(raw)
+
+        lines.append("")
+
+    lines.append("---")
+    lines.append("> ⚕️ **免責聲明**：本資訊為參考用途，實際用藥請諮詢醫師或藥師。")
+    return "\n".join(lines)
+
+
 def format_markdown_report(
     drug_names: List[str],
     resolved: Dict[str, dict],

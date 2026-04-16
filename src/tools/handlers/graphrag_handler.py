@@ -5,10 +5,12 @@ from typing import Any, Dict, List
 
 from mcp.types import CallToolRequest
 
-from graphrag.ingestion import ingest_drug
+from graphrag.config import GraphRAGConfig
+from graphrag.ingestion import fetch_raw_drug, ingest_drug
 from graphrag.name_resolver import _is_ascii_name, normalize, resolve_drug_names
 from graphrag.retriever import (
     format_markdown_report,
+    format_passthrough_report,
     get_entity_ids,
     graph_query,
 )
@@ -44,7 +46,11 @@ class GraphRAGHandler(ToolHandler):
         return self._error_response(f"未知工具: {tool}")
 
     async def _check_safety(self, args: dict) -> Dict[str, Any]:
-        """drug_check_safety 實作。"""
+        """drug_check_safety 實作。
+
+        LLM 已設定 → 提取模式：FDA → LLM 萃取 → SQLite 圖譜查詢
+        LLM 未設定 → 直通模式：FDA 原文直接回傳，由呼叫端 LLM 處理
+        """
         drug_names: List[str] = args.get("drugs", [])
         severity_filter: str = args.get("severity_filter", "all")
         auto_fetch: bool = args.get("auto_fetch", True)
@@ -56,40 +62,46 @@ class GraphRAGHandler(ToolHandler):
 
         store = await get_store()
 
-        # 1. 藥名對齊
-        resolved = await resolve_drug_names(drug_names)
-
-        # 2. 收集唯一英文成分（去重）
+        # 收集唯一英文成分
         unique_ingredients: List[str] = []
         seen_ings: set = set()
         for name in drug_names:
-            ings = resolved[name].get("ingredients") or []
-            if not ings:
-                if _is_ascii_name(name):
-                    ings = [name]
-                else:
-                    logger.warning(f"'{name}' 非英文名稱，略過")
-            for ing in ings:
-                key = ing.upper()
+            if _is_ascii_name(name):
+                key = name.upper()
                 if key not in seen_ings:
                     seen_ings.add(key)
-                    unique_ingredients.append(ing)
+                    unique_ingredients.append(name)
+            else:
+                logger.warning(f"'{name}' 非英文名稱，略過")
 
-        # 3. 懶加載 ingestion
+        # ── 直通模式（LLM 未設定）────────────────────────────────────────────
+        if not GraphRAGConfig.is_llm_configured():
+            logger.info("LLM 未設定，切換為直通模式")
+            results = []
+            if auto_fetch:
+                for ing in unique_ingredients:
+                    res = await fetch_raw_drug(ing, store)
+                    results.append(res)
+            else:
+                for ing in unique_ingredients:
+                    results.append({
+                        "status": "skipped", "generic_name": ing,
+                        "raw_text": None, "error": None,
+                    })
+            report = format_passthrough_report(results)
+            return self._success_response(report)
+
+        # ── 提取模式（LLM 已設定）────────────────────────────────────────────
+        resolved = await resolve_drug_names(drug_names)
+
         if auto_fetch:
             for ing in unique_ingredients:
-                await ingest_drug(
-                    generic_name=ing,
-                    store=store,
-                    db_manager=None,
-                )
+                await ingest_drug(generic_name=ing, store=store, db_manager=None)
 
-        # 4. 圖譜查詢
         entity_id_map = await get_entity_ids(unique_ingredients, store)
         entity_ids = [eid for eid in entity_id_map.values() if eid is not None]
         graph_results = await graph_query(entity_ids, store, severity_filter)
 
-        # 5. 格式化報告
         report = format_markdown_report(
             drug_names=drug_names,
             resolved=resolved,
@@ -98,7 +110,11 @@ class GraphRAGHandler(ToolHandler):
         return self._success_response(report)
 
     async def _ingest_fda(self, args: dict) -> Dict[str, Any]:
-        """drug_ingest_fda 實作。"""
+        """drug_ingest_fda 實作。
+
+        LLM 已設定 → 提取模式：萃取並寫入 SQLite 圖譜
+        LLM 未設定 → 直通模式：僅取 FDA 原文，回傳供呼叫端處理
+        """
         generic_names: List[str] = args.get("generic_names", [])
         force_refresh: bool = args.get("force_refresh", False)
         limit: int = min(args.get("limit", 50), 500)
@@ -118,6 +134,17 @@ class GraphRAGHandler(ToolHandler):
         if not rows:
             return self._error_response("無可處理的藥品名稱")
 
+        # ── 直通模式 ────────────────────────────────────────────────────────
+        if not GraphRAGConfig.is_llm_configured():
+            logger.info("LLM 未設定，drug_ingest_fda 切換為直通模式")
+            results = []
+            for name_en in rows:
+                res = await fetch_raw_drug(name_en, store, force_refresh=force_refresh)
+                results.append(res)
+            report = format_passthrough_report(results)
+            return self._success_response(report)
+
+        # ── 提取模式 ────────────────────────────────────────────────────────
         stats = {"ok": 0, "not_found": 0, "cached": 0, "error": 0, "total_interactions": 0}
         errors = []
 

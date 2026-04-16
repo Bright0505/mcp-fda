@@ -30,3 +30,8 @@ class GraphRAGConfig:
     GRAPHRAG_PG_NAME: str = os.getenv("GRAPHRAG_PG_NAME", "")
     GRAPHRAG_PG_USER: str = os.getenv("GRAPHRAG_PG_USER", "")
     GRAPHRAG_PG_PASSWORD: str = os.getenv("GRAPHRAG_PG_PASSWORD", "")
+
+    @classmethod
+    def is_llm_configured(cls) -> bool:
+        """回傳 True 表示 LLM 已設定，可執行提取模式；False 則降為直通模式。"""
+        return bool(cls.LLM_API_KEY.strip())

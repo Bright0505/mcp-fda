@@ -6,6 +6,13 @@
 
 獨立的 FDA 藥品交互作用 MCP 模組。自動擷取 FDA API 資料，透過 **GraphRAG 知識圖譜**（SQLite）提供結構化交互作用查詢，並以 SQLite 作為 FDA 快取層，無需任何外部服務即可運行。
 
+**兩種運作模式，自動切換：**
+
+| 模式 | 條件 | 行為 |
+|------|------|------|
+| **提取模式** | `LLM_API_KEY` 已設定 | FDA 原文 → LLM 萃取 → SQLite 圖譜 → 結構化表格輸出 |
+| **直通模式** | `LLM_API_KEY` 未設定 | FDA 原文直接回傳，由呼叫端 LLM（Claude / GPT / 任意模型）處理 |
+
 > 此模組不依賴任何內部藥品資料庫，僅需提供英文藥品通用名稱（generic name）即可查詢。
 
 ---
@@ -18,16 +25,16 @@ MCP Client / Open WebUI / Claude Desktop
          ▼
     mcp-fda (port 8000)
          │
-         ├── drug_check_safety    # 交互作用查詢（懶加載 + 圖譜查詢）
-         └── drug_ingest_fda      # 手動觸發 FDA 資料擷取
+         ├── drug_check_safety    # 交互作用查詢
+         └── drug_ingest_fda      # FDA 資料擷取
               │
-              ├──► SQLite (/app/data/graphrag.db)
-              │      ├── graphrag_drug_entities      # 藥品節點
-              │      ├── graphrag_drug_interactions  # 交互作用關係
-              │      └── graphrag_fetch_log          # FDA API 快取（TTL=30天）
+              ├──► FDA API (api.fda.gov)
               │
-              └──► LLM（任意 OpenAI-compatible 端點）
-                     └──► FDA API (api.fda.gov)
+              ├──► [提取模式] LLM（OpenAI-compatible）
+              │         └──► SQLite — 結構化圖譜 + 快取（TTL=30天）
+              │
+              └──► [直通模式] FDA 原文直接回傳呼叫端 LLM
+                         └──► SQLite — 僅記錄快取狀態
 ```
 
 ---
@@ -79,9 +86,6 @@ python src/main.py --http
       "args": ["/path/to/mcp-fda/src/main.py"],
       "env": {
         "PYTHONPATH": "/path/to/mcp-fda/src",
-        "LLM_BASE_URL": "https://api.openai.com/v1",
-        "LLM_API_KEY": "your-api-key",
-        "LLM_MODEL": "gpt-4o-mini",
         "GRAPHRAG_DB_TYPE": "sqlite",
         "GRAPHRAG_SQLITE_PATH": "/path/to/mcp-fda/data/graphrag.db",
         "TOOL_PREFIX": "drug",
@@ -91,6 +95,9 @@ python src/main.py --http
   }
 }
 ```
+
+不設定 `LLM_API_KEY` → **直通模式**，FDA 原文由 Claude 處理。
+設定 `LLM_API_KEY` → **提取模式**，mcp-fda 自行萃取並建立圖譜。
 
 ### Open WebUI / MCPO（SSE）
 
@@ -107,9 +114,9 @@ http://localhost:8000/sse/
 
 | 變數 | 必填 | 預設 | 說明 |
 |------|------|------|------|
-| `LLM_BASE_URL` | ✅ | `https://api.openai.com/v1` | OpenAI-compatible 端點 |
-| `LLM_API_KEY` | ✅ | — | API 金鑰 |
-| `LLM_MODEL` | ✅ | `gpt-4o-mini` | 模型名稱 |
+| `LLM_BASE_URL` | | `https://api.openai.com/v1` | OpenAI-compatible 端點（未設定 → 直通模式） |
+| `LLM_API_KEY` | | — | API 金鑰（**未設定則自動切換為直通模式**） |
+| `LLM_MODEL` | | `gpt-4o-mini` | 模型名稱 |
 | `LLM_TIMEOUT` | | `60` | LLM 逾時（秒） |
 | `GRAPHRAG_DB_TYPE` | | `sqlite` | `sqlite` 或 `postgresql` |
 | `GRAPHRAG_SQLITE_PATH` | | `/app/data/graphrag.db` | SQLite 資料庫路徑 |
@@ -166,23 +173,34 @@ curl -X POST http://localhost:8000/api/v1/tool \
 
 ---
 
-## 懶加載機制
+## 運作模式
 
-`drug_check_safety` 呼叫時，若目標藥品尚未快取：
+系統啟動時偵測 `LLM_API_KEY` 是否設定，自動選擇模式：
 
-1. 查詢 `graphrag_fetch_log`（TTL=30 天）
+### 提取模式（`LLM_API_KEY` 已設定）
+
+`drug_check_safety` 首次查詢未快取藥品時：
+
+1. 查詢 `graphrag_fetch_log`（TTL=30 天），快取命中直接回傳
 2. 呼叫 FDA API：`/drug/label.json?search=openfda.generic_name:"藥名"`
 3. LLM 萃取 `drug_interactions` 原文 → 結構化 JSON
 4. 寫入 SQLite（`graphrag_drug_entities` + `graphrag_drug_interactions`）
-5. 更新 `graphrag_fetch_log`
-
-**降級行為：**
+5. 回傳結構化 Markdown 表格
 
 | 情境 | 處理 |
 |------|------|
 | FDA 404 | 記錄 `not_found`，回傳無資料提示 |
 | FDA 429 / 5xx | 指數退避，最多重試 3 次 |
 | LLM 萃取失敗 | 記錄 `error`，不寫圖譜 |
+
+### 直通模式（`LLM_API_KEY` 未設定）
+
+1. 查詢 `graphrag_fetch_log`，快取命中直接回傳原文
+2. 呼叫 FDA API 取得原始 `drug_interactions` 段落
+3. 原文直接回傳給呼叫端 LLM（Claude / GPT / Gemini / 任意模型）處理
+4. 記錄快取狀態至 `graphrag_fetch_log`
+
+> 適合：已有外部 LLM 的使用情境（如 Claude Code、Open WebUI），不需額外配置 API Key。
 
 ---
 
@@ -254,4 +272,4 @@ SOFTWARE.
 
 ---
 
-**版本**：v1.0.0 | **最後更新**：2026-04-16
+**版本**：v1.1.0 | **最後更新**：2026-04-16

@@ -1,8 +1,17 @@
-"""Ingestion Pipeline — FDA 懶加載 → LLM 萃取 → GraphRAGStore 入庫。"""
+"""Ingestion Pipeline — FDA 懶加載 → LLM 萃取 → GraphRAGStore 入庫。
+
+直通模式（LLM 未設定）：
+    fetch_raw_drug() — 僅取 FDA 原文，不萃取、不寫圖譜，回傳原文供呼叫端 LLM 處理。
+提取模式（LLM 已設定）：
+    ingest_drug()    — 完整 pipeline：FDA → LLM 萃取 → SQLite 圖譜。
+"""
 
 import logging
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 from uuid import uuid4
+
+# 直通模式 in-memory 快取：{ generic_name_norm → raw_interaction_text }
+_raw_cache: Dict[str, str] = {}
 
 from graphrag.extractor import extract_interactions
 from graphrag.fda_client import (
@@ -16,6 +25,57 @@ from graphrag.name_resolver import get_whitelist_sample, normalize
 from graphrag.store.base import GraphRAGStore
 
 logger = logging.getLogger(__name__)
+
+
+async def fetch_raw_drug(
+    generic_name: str,
+    store: GraphRAGStore,
+    force_refresh: bool = False,
+) -> dict:
+    """直通模式：僅取 FDA 原文，不呼叫 LLM、不寫圖譜。
+
+    結果以 in-memory 快取，進程存活期間有效。
+    force_refresh=True 時忽略快取重新取得。
+
+    Returns:
+        dict with keys: status, raw_text, generic_name, error
+    """
+    norm = normalize(generic_name)
+
+    # in-memory 快取命中
+    if not force_refresh and norm in _raw_cache:
+        logger.debug(f"直通快取命中: {generic_name}")
+        return {"status": "cached", "generic_name": generic_name,
+                "raw_text": _raw_cache[norm], "error": None}
+
+    # fetch_log 快取命中（代表之前已查過但 not_found）
+    if not force_refresh:
+        cached = await store.check_cache(norm)
+        if cached == "not_found":
+            return {"status": "not_found", "generic_name": generic_name,
+                    "raw_text": None, "error": None}
+
+    try:
+        fda_result = await fetch_label(generic_name)
+    except FDANotFoundError as e:
+        await store.upsert_fetch_log(norm, "not_found", 404, str(e))
+        return {"status": "not_found", "generic_name": generic_name,
+                "raw_text": None, "error": str(e)}
+    except (FDAServiceError, Exception) as e:
+        return {"status": "error", "generic_name": generic_name,
+                "raw_text": None, "error": str(e)}
+
+    raw_text = extract_interaction_text(fda_result)
+    if not raw_text:
+        await store.upsert_fetch_log(norm, "ok", 200, None, 0)
+        return {"status": "ok_no_interactions", "generic_name": generic_name,
+                "raw_text": None, "error": None}
+
+    _raw_cache[norm] = raw_text
+    await store.upsert_fetch_log(norm, "ok", 200, None, 0)
+    logger.info(f"直通模式：取得 {generic_name} FDA 原文（{len(raw_text)} 字元）")
+    return {"status": "ok", "generic_name": generic_name,
+            "raw_text": raw_text, "error": None}
 
 
 async def ingest_drug(
