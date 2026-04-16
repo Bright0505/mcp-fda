@@ -3,7 +3,7 @@
 
 依 GRAPHRAG_DB_TYPE 環境變數選擇後端：
   - sqlite（預設）：建立本地 SQLite DB，使用 schema/graphrag_schema_sqlite.sql
-  - postgresql：連線獨立 PostgreSQL（非 Data Lake），使用 schema/graphrag_schema.sql
+  - postgresql：連線獨立 PostgreSQL，使用 schema/graphrag_schema.sql
 
 執行方式：
     python scripts/init_graphrag_db.py

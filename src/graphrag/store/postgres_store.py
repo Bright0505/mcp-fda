@@ -1,6 +1,6 @@
 """PostgreSQL GraphRAG 儲存後端（可選）。
 
-使用 asyncpg 連線池，連線至獨立 PostgreSQL（非 Data Lake）。
+使用 asyncpg 連線池，連線至獨立 PostgreSQL。
 啟用條件：GRAPHRAG_DB_TYPE=postgresql
 
 必要環境變數：
@@ -40,7 +40,7 @@ def _require_env(key: str) -> str:
 
 
 class PostgreSQLGraphRAGStore(GraphRAGStore):
-    """asyncpg 實作，使用獨立 PostgreSQL（非 Data Lake）。"""
+    """asyncpg 實作，使用獨立 PostgreSQL。"""
 
     def __init__(self) -> None:
         self._pool: Optional[asyncpg.Pool] = None
