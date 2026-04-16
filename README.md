@@ -1,4 +1,4 @@
-# mcp-fda — FDA 藥品交互作用 MCP 伺服器
+# 美國 FDA 藥品交互作用 MCP 伺服器
 
 [![Python](https://img.shields.io/badge/python-3.8+-green.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](LICENSE)
