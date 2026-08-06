@@ -1,0 +1,3 @@
+[submodule "claude-sandbox"]
+	path = claude-sandbox
+	url = git@github.com:Bright0505/claude-code-sandbox.git
