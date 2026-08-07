@@ -116,7 +116,7 @@ submodule 指標更新、KNOWN-ISSUES 紀錄、D7 腳本+測試,是三件不同�
 1. **沒有 `ssh`**,所以 `git push` / `git fetch` 走 SSH 會失敗。
    但**公開 repo 走 HTTPS 讀取完全不需要認證**——不要因為 push 不了就以為讀也不行
 2. **不要動 git config**(local 或 global 都不行)。缺身分時用
-   `git -c user.name="..." -c user.email="..." commit`,這個 workspace 用的是
-   `bright0505 <gt07814@greattree.com.tw>`
+   `git -c user.name="..." -c user.email="..." commit`——具體身分不寫死在這份文件裡
+   (避免 email 明文進版控),要用的話跟使用者要
 3. **`claude-sandbox` 是獨立 repo**,它的 `main` 一樣受禁令 1 保護,要開自己的分支
 4. 更多見 `claude-sandbox/.claude/skills/traps/SKILL.md`
