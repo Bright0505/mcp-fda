@@ -20,8 +20,9 @@
 4. **mcp-fda 自己的 `tools/check_known_issues_links.py` 已刪除**,改用
    submodule 版本(兩份逐行比對過,程式碼一致)。測試檔只留對照真實
    `docs/KNOWN-ISSUES.md` 的整合測試,其餘 14 則邏輯測試刪除(submodule 自己的
-   14 則 unittest 已覆蓋)。改動在分支 `chore/dedupe-known-issues-checker`
-   上,**尚未 push**
+   14 則 unittest 已覆蓋)。改動在分支 `chore/dedupe-known-issues-checker` 上,
+   已 push、開 PR #2、**已合併進 `main`**(GitHub API 查證,merge commit
+   `f62352a`)
 
 ---
 
@@ -29,8 +30,8 @@
 
 | 項目 | 狀態 |
 |---|---|
-| mcp-fda `main` | 已同步到 `d1d2fa5`(PR #1 合併後),`git submodule status` → `1381c0c heads/main` |
-| mcp-fda 目前分支 | `chore/dedupe-known-issues-checker`(不是 main,可以 commit),尚未 push |
+| mcp-fda `main` | 已同步到 `f62352a`(PR #1、PR #2 皆已合併),`git submodule status` → `1381c0c heads/main` |
+| mcp-fda 目前分支 | `main`,工作目錄乾淨(`chore/dedupe-known-issues-checker` 已合併,可刪) |
 | `pytest` | **31 passed**(45 − 14,刪掉重複邏輯測試後的數字,已驗證對得上) |
 | `check_known_issues_links.py` | 已改成單一來源:`claude-sandbox/.claude/skills/record/scripts/check_known_issues_links.py` |
 | sandbox PR #2–#9 | **全部已合併**(GitHub API 查證過) |
@@ -40,18 +41,7 @@
 
 ## 下一步
 
-### 1. push `chore/dedupe-known-issues-checker` 並開 PR
-
-跟之前一樣,容器裡沒有 ssh client,要在主機端做:
-
-```bash
-cd <mcp-fda 專案目錄>
-git push -u origin chore/dedupe-known-issues-checker
-gh pr create --base main --head chore/dedupe-known-issues-checker \
-  --title "refactor: 刪除 mcp-fda 自己的 check_known_issues_links.py,改用 submodule 版本"
-```
-
-### 2. 尚未做的工作
+### 尚未做的工作
 
 | 項目 | 狀態 |
 |---|---|
