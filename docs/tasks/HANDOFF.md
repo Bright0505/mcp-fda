@@ -1,6 +1,6 @@
 # 交接:現在到哪、下一步是什麼
 
-**最後更新**:2026-08-07(容器重建前寫的)
+**最後更新**:2026-08-07
 **主線任務**:`docs/tasks/2026-08-06-sandbox-落地與實測.md`(完整脈絡在那)
 
 > 這份是入口,只講「現在的狀態」與「接下來做什麼」。
@@ -8,45 +8,20 @@
 
 ---
 
-## 第一件事:確認容器重建後,假刪除消失了
+## 已完成(這次交接前的收尾工作)
 
-上一個 session 卡在這裡不能交付。根因是 `claude-sandbox/docker-compose.claude.yml`
-原本有一行 `./scripts:/workspace/scripts:ro`,跟前一行的大範圍 mount 路徑重疊,
-**把本專案的 `scripts/` 整個遮住**,導致 `git status` 誤報檔案被刪除。
-完整說明見 `docs/KNOWN-ISSUES.md` 的 **K-3**。
-
-修正已經在 `claude-sandbox` 的 `fix/drop-scripts-runtime-mount` 分支上(commit `650acef`)。
-**這是 volume 設定,不需要 `docker build`,重新建立容器(`down` + `up`)就會生效。**
-
-重建後第一件事,跑:
-
-```bash
-git status --short
-```
-
-**預期會消失的四行**(它們全都是遮蔽造成的假象):
-
-```
- D scripts/init_graphrag_db.py     ← 假刪除,檔案其實還在
- D scripts/seed_fda.py             ← 假刪除,檔案其實還在
-?? scripts/entrypoint.sh           ← 不屬於本專案,是 sandbox 的檔案被掛進來
-?? scripts/init-firewall.sh        ← 同上
-```
-
-**預期會留下的**(這些是真的、要保留的工作成果):
-
-```
- M claude-sandbox                  ← submodule 指標,見下方
- M docs/KNOWN-ISSUES.md            ← K-2 標已推翻、新增 K-3
- M docs/tasks/2026-08-06-sandbox-落地與實測.md
-?? docs/tasks/HANDOFF.md           ← 本檔
-?? tests/unit/test_check_known_issues_links.py
-?? tools/
-```
-
-- **四行都消失** → 修正生效,可以往下走
-- **還在** → 不要 commit。先查 `mount | grep workspace` 確認掛載狀態,
-  可能是容器沒真的重建、或用到了舊的 compose 檔
+1. **容器重建後假刪除消失,確認完畢**——K-3 的 mount 覆蓋修正生效,
+   `scripts/` 恢復可寫。細節見 `docs/KNOWN-ISSUES.md` 的 **K-3**
+2. **sandbox `fix/drop-scripts-runtime-mount` 分支已 push、PR #9 已合併**
+   (GitHub API 查證,merge commit `1381c0c`),容器內 `claude-sandbox` 已同步到這個
+   commit
+3. **mcp-fda submodule 指標已更新並 commit**(指向 `1381c0c`),連同 K-3 紀錄、
+   D7 腳本+測試、任務文件,分四個 commit 提交,開 PR #1 並已合併進 `main`
+4. **mcp-fda 自己的 `tools/check_known_issues_links.py` 已刪除**,改用
+   submodule 版本(兩份逐行比對過,程式碼一致)。測試檔只留對照真實
+   `docs/KNOWN-ISSUES.md` 的整合測試,其餘 14 則邏輯測試刪除(submodule 自己的
+   14 則 unittest 已覆蓋)。改動在分支 `chore/dedupe-known-issues-checker`
+   上,**尚未 push**
 
 ---
 
@@ -54,53 +29,29 @@ git status --short
 
 | 項目 | 狀態 |
 |---|---|
-| mcp-fda 分支 | `chore/add-claude-sandbox`(不是 main,可以 commit) |
-| `pytest` | **45 passed**(重建後請重跑一次確認) |
-| `tools/check_known_issues_links.py` | exit 0(兩筆「需要人判斷」的提示是 K-3 的遮蔽現象本身,重建後應該會消失) |
-| sandbox PR #2–#8 | **全部已合併**(GitHub API 查證過) |
-| sandbox `main` | `ee63fb4` |
-| sandbox 目前 checkout | `fix/drop-scripts-runtime-mount`(`650acef`)—— **尚未 push** |
-| mcp-fda submodule 指標 | 還釘在舊的 `3846eac`,**尚未更新**(刻意留到最後) |
+| mcp-fda `main` | 已同步到 `d1d2fa5`(PR #1 合併後),`git submodule status` → `1381c0c heads/main` |
+| mcp-fda 目前分支 | `chore/dedupe-known-issues-checker`(不是 main,可以 commit),尚未 push |
+| `pytest` | **31 passed**(45 − 14,刪掉重複邏輯測試後的數字,已驗證對得上) |
+| `check_known_issues_links.py` | 已改成單一來源:`claude-sandbox/.claude/skills/record/scripts/check_known_issues_links.py` |
+| sandbox PR #2–#9 | **全部已合併**(GitHub API 查證過) |
+| sandbox `main` | `1381c0c` |
 
 ---
 
-## 下一步(照順序)
+## 下一步
 
-### 1. 推送並合併最後一個 sandbox 分支
+### 1. push `chore/dedupe-known-issues-checker` 並開 PR
 
-這個環境**沒有 ssh client、`gh` 沒登入**,push 要在主機端做(容器裡的 commit
-已經真實存在於主機檔案系統,因為 `/workspace` 是 bind mount):
-
-```bash
-cd <mcp-fda 專案目錄>/claude-sandbox
-git push -u origin fix/drop-scripts-runtime-mount
-gh pr create --base main --head fix/drop-scripts-runtime-mount \
-  --title "fix: 移除 docker-compose 的 scripts/ runtime mount"
-```
-
-合併後在容器裡可以用 HTTPS 同步(公開 repo 讀取不需要認證):
+跟之前一樣,容器裡沒有 ssh client,要在主機端做:
 
 ```bash
-cd /workspace/claude-sandbox
-git fetch https://github.com/Bright0505/claude-code-sandbox.git main:refs/remotes/origin/main
-git checkout main && git merge --ff-only origin/main
+cd <mcp-fda 專案目錄>
+git push -u origin chore/dedupe-known-issues-checker
+gh pr create --base main --head chore/dedupe-known-issues-checker \
+  --title "refactor: 刪除 mcp-fda 自己的 check_known_issues_links.py,改用 submodule 版本"
 ```
 
-### 2. 更新 submodule 指標並 commit
-
-**⚠️ commit 時明確列檔名,不要用 `git add -A` / `git add .`**——
-如果第一步的驗證沒過,那會把假刪除掃進去(K-3 的判準 2)。
-
-```bash
-cd /workspace
-git add claude-sandbox docs/KNOWN-ISSUES.md docs/tasks/ tests/unit/test_check_known_issues_links.py tools/
-git status --short          # 再確認一次沒有 scripts/ 的假刪除
-```
-
-commit 訊息要分開(禁令 6:一個 commit 不混不同性質的改動)——
-submodule 指標更新、KNOWN-ISSUES 紀錄、D7 腳本+測試,是三件不同的事。
-
-### 3. 尚未做的工作
+### 2. 尚未做的工作
 
 | 項目 | 狀態 |
 |---|---|
