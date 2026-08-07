@@ -54,15 +54,44 @@
 
 ## 下一步
 
-### 里程碑(2026-08-07):接下來優先處理容器內沒有 ssh 的問題
+### 進行中(2026-08-07):容器內 git/gh 認證,方向已定案,等主機端動作
 
-現況:容器裡沒有 `ssh` client,`git@github.com:...` 的 SSH remote 完全不能
-`push`/`fetch`(公開 repo 用 HTTPS 讀取不受影響,見下方陷阱第 1 條)。這次任務
-每次 push、開 PR、刪遠端分支都要請使用者在主機端代勞,是目前交接摩擦最大的
-一點。**還沒有定案要怎麼處理**——可能方向包括在容器裡裝 `ssh` client、改用
-`GH_TOKEN`/`GITHUB_TOKEN` 走 HTTPS 認證、或維持現狀只靠主機代勞——三個方向
-各自的代價與副作用都還沒討論,下一輪開工前要先照「動手前四步」走一次
-(回述/定位/講計畫/缺口分類),不要直接動手裝東西。
+**定案的方向**:改用 `GH_TOKEN`(fine-grained PAT)走 HTTPS,不裝 ssh。
+
+**已量測、排除掉的方向**:在容器裡裝 `ssh` client——量過是死路,原因兩層都獨立成立:
+1. 容器是非 root(`whoami` → `claude`),`apt-get update` 回
+   `Permission denied: /var/lib/apt/lists`,裝不了系統套件
+2. 就算能裝,`claude-sandbox/scripts/init-firewall.sh` 的白名單只開放
+   tcp/443、tcp/80 給允許的網域,**沒開 port 22**,SSH transport 連不出去
+
+**範圍已跟使用者確認**:先只接**這一個容器**,不動 `claude-sandbox` 本體
+(不改 `.env.claude.example`、不改 `entrypoint.sh` 自動偵測 `GH_TOKEN`)。
+之後這條路驗證可靠了,要不要回饋成 sandbox 標準功能,留給下一次決定。
+
+**分工**(見對話紀錄,`docker-compose.claude.yml` 的 `env_file: .env.claude`
+是既有機制,`.env.claude` 已 gitignore):
+
+| 步驟 | 內容 | 誰做 |
+|---|---|---|
+| 1 | GitHub 建 fine-grained PAT,只授權 `mcp-fda`、`claude-code-sandbox` 兩個 repo,權限只給 Contents + Pull requests 的 read/write | 使用者(GitHub 網站) |
+| 2 | `GH_TOKEN=...` 寫進 `claude-sandbox/.env.claude` | 使用者(主機端) |
+| 3 | 重建容器讓 `env_file` 生效 | 使用者(主機端) |
+| 4 | 容器內把兩個 repo 的 remote 從 SSH 改成 HTTPS、`gh auth setup-git`、用 `gh auth status`+ 一次真的 push 驗證 | 我(下一個能存取到已重建容器的 session) |
+
+**⚠️ 交接斷點,下一個 session 開工前必查**:使用者說「已經開新 session、狀態轉過去了」,
+但在**這個**執行環境裡實測(2026-08-07)——`echo $GH_TOKEN` 是空的、`gh auth status`
+未登入、容器 `uptime` 顯示 2 天(不是剛重建的新容器)、git remote 仍是
+`git@github.com:...`。**代表步驟 1-3 尚未反映在這個環境裡**——不確定是
+「新 session 接的是另一個真的重建過的容器」還是「步驟 1-3 其實還沒做完」。
+**下一個 session 進來後,先重跑這組檢查**,確認 `GH_TOKEN` 真的有值、
+`gh auth status` 是登入狀態,才能往下走第 4 步,不要假設使用者說的「轉移過去了」
+等於環境已經就緒(鐵則1、2、9)。
+
+```bash
+[ -n "$GH_TOKEN" ] && echo "GH_TOKEN set" || echo "GH_TOKEN NOT set"
+gh auth status
+uptime
+```
 
 ### 尚未做的工作
 
