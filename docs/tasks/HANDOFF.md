@@ -43,8 +43,8 @@
 
 | 項目 | 狀態 |
 |---|---|
-| mcp-fda `main`(本機) | `a57844d`,領先 `origin/main` 1 個 commit(HANDOFF.md 同步,尚未 push) |
-| mcp-fda 目前分支 | `main`,工作目錄乾淨;本機已合併分支已清空,遠端兩條同名分支還在等主機端刪 |
+| mcp-fda `main`(本機/遠端) | `10b1f54`,本機已用 `git push` 推上 `origin/main`,GitHub API 查證過真的落地(這次 HANDOFF.md 更新完會再領先 1 個 commit) |
+| mcp-fda 目前分支 | `main`,工作目錄乾淨;remote 已切成 HTTPS;`chore/add-claude-sandbox`、`chore/dedupe-known-issues-checker` 兩條分支經 GitHub API 查證已不存在於遠端(不是這次刪的,推測是合併時 GitHub 自動清掉,未證實) |
 | `pytest` | **31 passed**(45 − 14,刪掉重複邏輯測試後的數字,已驗證對得上) |
 | `check_known_issues_links.py` | 已改成單一來源:`claude-sandbox/.claude/skills/record/scripts/check_known_issues_links.py` |
 | sandbox PR #2–#9 | **全部已合併**(GitHub API 查證過) |
@@ -54,44 +54,63 @@
 
 ## 下一步
 
-### 進行中(2026-08-07):容器內 git/gh 認證,方向已定案,等主機端動作
+### 已完成(2026-08-07):容器內 git/gh 認證,GH_TOKEN 接線通了
 
-**定案的方向**:改用 `GH_TOKEN`(fine-grained PAT)走 HTTPS,不裝 ssh。
+**結論**:HTTPS + fine-grained PAT 這條路**通**,讀、寫(push)都用真實動作驗證過,
+GitHub API 交叉查證過結果不是只信 CLI 訊息。
 
-**已量測、排除掉的方向**:在容器裡裝 `ssh` client——量過是死路,原因兩層都獨立成立:
-1. 容器是非 root(`whoami` → `claude`),`apt-get update` 回
-   `Permission denied: /var/lib/apt/lists`,裝不了系統套件
-2. 就算能裝,`claude-sandbox/scripts/init-firewall.sh` 的白名單只開放
-   tcp/443、tcp/80 給允許的網域,**沒開 port 22**,SSH transport 連不出去
+**開工前環境檢查**(這次沒有卡住,直接往下做):
 
-**範圍已跟使用者確認**:先只接**這一個容器**,不動 `claude-sandbox` 本體
-(不改 `.env.claude.example`、不改 `entrypoint.sh` 自動偵測 `GH_TOKEN`)。
-之後這條路驗證可靠了,要不要回饋成 sandbox 標準功能,留給下一次決定。
-
-**分工**(見對話紀錄,`docker-compose.claude.yml` 的 `env_file: .env.claude`
-是既有機制,`.env.claude` 已 gitignore):
-
-| 步驟 | 內容 | 誰做 |
-|---|---|---|
-| 1 | GitHub 建 fine-grained PAT,只授權 `mcp-fda`、`claude-code-sandbox` 兩個 repo,權限只給 Contents + Pull requests 的 read/write | 使用者(GitHub 網站) |
-| 2 | `GH_TOKEN=...` 寫進 `claude-sandbox/.env.claude` | 使用者(主機端) |
-| 3 | 重建容器讓 `env_file` 生效 | 使用者(主機端) |
-| 4 | 容器內把兩個 repo 的 remote 從 SSH 改成 HTTPS、`gh auth setup-git`、用 `gh auth status`+ 一次真的 push 驗證 | 我(下一個能存取到已重建容器的 session) |
-
-**⚠️ 交接斷點,下一個 session 開工前必查**:使用者說「已經開新 session、狀態轉過去了」,
-但在**這個**執行環境裡實測(2026-08-07)——`echo $GH_TOKEN` 是空的、`gh auth status`
-未登入、容器 `uptime` 顯示 2 天(不是剛重建的新容器)、git remote 仍是
-`git@github.com:...`。**代表步驟 1-3 尚未反映在這個環境裡**——不確定是
-「新 session 接的是另一個真的重建過的容器」還是「步驟 1-3 其實還沒做完」。
-**下一個 session 進來後,先重跑這組檢查**,確認 `GH_TOKEN` 真的有值、
-`gh auth status` 是登入狀態,才能往下走第 4 步,不要假設使用者說的「轉移過去了」
-等於環境已經就緒(鐵則1、2、9)。
-
-```bash
-[ -n "$GH_TOKEN" ] && echo "GH_TOKEN set" || echo "GH_TOKEN NOT set"
-gh auth status
-uptime
 ```
+$ [ -n "$GH_TOKEN" ] && echo "GH_TOKEN set" || echo "GH_TOKEN NOT set"
+GH_TOKEN set
+$ gh auth status
+github.com
+  ✓ Logged in to github.com account Bright0505 (GH_TOKEN)
+  - Active account: true
+  - Git operations protocol: https
+$ uptime
+ 07:35:02 up 2 days,  2:25, ...
+```
+
+`uptime` 仍顯示 2 天(不是剛重建的新容器),但 `GH_TOKEN` 已經生效——
+代表這次不是靠「重建容器」讓 `env_file` 生效,實際機制是什麼**無法從現有證據判定**
+(不編造原因,鐵則5)。只記錄現象:這次環境已就緒,可以照原計畫往下走。
+
+**做了什麼**:
+
+1. `git remote set-url origin https://github.com/Bright0505/mcp-fda.git`、
+   `git -C claude-sandbox remote set-url origin https://github.com/Bright0505/claude-code-sandbox.git`、
+   `gh auth setup-git`——三個指令都無輸出無錯誤,`git remote -v` 復查兩個 repo
+   都已經是 `https://...` 形式
+2. 讀測試:`git ls-remote origin` 兩個 repo 各跑一次,都成功回傳 `refs/heads/main`
+   等 ref 清單(mcp-fda 在 `f62352a`,claude-sandbox 在 `1381c0c`,跟 HANDOFF.md
+   之前記的狀態速覽一致)
+3. 寫測試(真實待辦,不是空推):`git push origin main`(mcp-fda,本機領先
+   3 個 commit `a57844d`/`9fc076a`/`10b1f54`)→ 成功,輸出
+   `f62352a..10b1f54  main -> main`
+4. 刪分支測試:`git push origin --delete chore/add-claude-sandbox
+   chore/dedupe-known-issues-checker` → **失敗**,`error: unable to delete
+   ...: remote ref does not exist`——查了一下,前一步 `ls-remote` 的輸出裡
+   本來就沒看到這兩條分支,代表它們在這次操作之前就已經不在遠端了(合理推測
+   是 PR #1/#2 合併時 GitHub 自動刪除分支,但這只是推測,沒有直接證據,
+   不寫成結論)。**delete 權限這次沒有真正測到**,因為沒有活著的目標可刪
+5. GitHub API 交叉驗證(不只信 git/gh CLI 的成功訊息):
+   - `GET /repos/Bright0505/mcp-fda/commits?sha=main` → 回傳的第一筆
+     `sha` 就是 `10b1f5420ccd63b9a58c1f8aa8fa628b2a30a9e1`,commit message
+     跟本機一致,**確認 push 真的落地在遠端**
+   - `GET /repos/Bright0505/mcp-fda/branches` → 只列出 `main` 一條,
+     **確認 `chore/add-claude-sandbox`、`chore/dedupe-known-issues-checker`
+     確實不存在**於遠端(不論是不是這次刪的)
+
+**沒做什麼**:
+- 沒有驗證到「刪分支」的寫入權限本身——目標分支本來就已經不存在,這次操作
+  只證明了 CLI 對「刪不存在的 ref」的錯誤回報行為,不能當作 delete 權限已驗證。
+  之後如果要真的驗 delete 權限,需要另外造一條測試分支
+- 只對 mcp-fda 做了 push(寫入)測試,claude-sandbox 這邊只做了 `ls-remote`
+  讀測試,沒有做寫入測試(沒有真實待辦需要推,不無中生有造一個)
+- 沒有回答「這次 GH_TOKEN 為什麼生效、容器到底有沒有重建」——現象記錄了,
+  原因無法從現有證據判定,留給使用者或下一個 session 有新證據時再補
 
 ### 尚未做的工作
 
