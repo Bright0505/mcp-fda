@@ -23,6 +23,19 @@
    14 則 unittest 已覆蓋)。改動在分支 `chore/dedupe-known-issues-checker` 上,
    已 push、開 PR #2、**已合併進 `main`**(GitHub API 查證,merge commit
    `f62352a`)
+5. **HANDOFF.md 同步現況(commit `a57844d`)+ 清掉本機已合併的分支**
+   (`chore/add-claude-sandbox`、`chore/dedupe-known-issues-checker`,用
+   `git branch -d` 安全刪除,git 自己確認過完全合併才刪成功);遠端同名分支
+   還在,留給主機端 `git push origin --delete` 清
+6. **稽核既有 skill(`deliver`／`verify`／`traps`)建立時的證據**,結論:
+   三個建立 commit(`e8e0001`／`b2bbe99`／`7f37e14`)都真的存在於
+   `claude-sandbox` 歷史裡,`SKILL.md` 內容也確實是具體案例而非空泛條列。
+   但 `verify` skill 舉的「D7 腳本抓到 2 個真邏輯錯」這個實例,`check_known_issues_links.py`
+   的 commit 歷史**只有一個 squash commit**(`5a72f6a`),抓到 2 個真錯的
+   「先紅後綠」過程沒有留下獨立 commit 可查——這句話目前只能算任務檔自述,
+   不是能反查的一手證據。已補查到對應測試 `test_partial_archive_breaks_atomicity`
+   確實存在且通過,教訓確實落地成可執行的迴歸測試,只是「證據鏈的其中一段」不完整。
+   **不需要動作**,只是記下這個查證結果,供之後判斷同類 skill 引用的可信度時參考
 
 ---
 
@@ -30,8 +43,8 @@
 
 | 項目 | 狀態 |
 |---|---|
-| mcp-fda `main` | 已同步到 `f62352a`(PR #1、PR #2 皆已合併),`git submodule status` → `1381c0c heads/main` |
-| mcp-fda 目前分支 | `main`,工作目錄乾淨(`chore/dedupe-known-issues-checker` 已合併,可刪) |
+| mcp-fda `main`(本機) | `a57844d`,領先 `origin/main` 1 個 commit(HANDOFF.md 同步,尚未 push) |
+| mcp-fda 目前分支 | `main`,工作目錄乾淨;本機已合併分支已清空,遠端兩條同名分支還在等主機端刪 |
 | `pytest` | **31 passed**(45 − 14,刪掉重複邏輯測試後的數字,已驗證對得上) |
 | `check_known_issues_links.py` | 已改成單一來源:`claude-sandbox/.claude/skills/record/scripts/check_known_issues_links.py` |
 | sandbox PR #2–#9 | **全部已合併**(GitHub API 查證過) |
@@ -40,6 +53,16 @@
 ---
 
 ## 下一步
+
+### 里程碑(2026-08-07):接下來優先處理容器內沒有 ssh 的問題
+
+現況:容器裡沒有 `ssh` client,`git@github.com:...` 的 SSH remote 完全不能
+`push`/`fetch`(公開 repo 用 HTTPS 讀取不受影響,見下方陷阱第 1 條)。這次任務
+每次 push、開 PR、刪遠端分支都要請使用者在主機端代勞,是目前交接摩擦最大的
+一點。**還沒有定案要怎麼處理**——可能方向包括在容器裡裝 `ssh` client、改用
+`GH_TOKEN`/`GITHUB_TOKEN` 走 HTTPS 認證、或維持現狀只靠主機代勞——三個方向
+各自的代價與副作用都還沒討論,下一輪開工前要先照「動手前四步」走一次
+(回述/定位/講計畫/缺口分類),不要直接動手裝東西。
 
 ### 尚未做的工作
 
