@@ -96,3 +96,34 @@ grep -n "交互作用" docs/KNOWN-ISSUES.md
 > / `scripts/seed_fda.py`」——**那不是條目寫錯,正是本則描述的遮蔽現象本身**。
 > 容器帶著修正重建之後這兩筆會自動消失。若重建後仍然報,才代表那兩個檔案
 > 真的不見了,那時要照判準去查。
+
+### K-5 `test_ingestion.py` 塞進 `sys.modules` 的假模組沒清乾淨,污染同一個 pytest process 裡的其他測試
+
+- **影響範圍**：`tests/unit/test_ingestion.py`(污染源)、任何在同一個
+  `pytest` process 裡、在它之後才第一次真的 `import` 到
+  `graphrag.store` 的測試(目前已知會中的是 `tests/unit/test_mcp_entrypoints.py`)
+- **狀態**：未處理——這次(`2026-08-08-mcp-v2-遷移.md`)撞到但決定不修,
+  理由見下方
+- **症狀**：`test_mcp_entrypoints.py` 單獨執行(`pytest tests/unit/test_mcp_entrypoints.py`)
+  **7 passed**,但跟全專案測試一起跑(`pytest`)會在 collection 階段炸掉:
+  `ImportError: cannot import name 'get_store' from 'graphrag.store' (unknown location)`
+- **根因**：`test_ingestion.py` 為了避免自己的單元測試碰到真的資料庫/向量
+  儲存,執行了 `sys.modules.setdefault("graphrag.store", types.ModuleType("graphrag.store"))`
+  塞一個空白假模組進 `sys.modules`(process 全域快取),測試結束後沒有清除。
+  pytest 預設按字母序收集,`test_ingestion.py` 先跑,`test_mcp_entrypoints.py`
+  (字母序在後)第一次真的走到 `graphrag_handler.py` 的
+  `from graphrag.store import get_store` 時,拿到的是那個空白假模組
+- **判準**：
+  1. 這是既有問題,不是任何一次新改動造成的——只是在這次之前,完全沒有
+     測試真的 import 過 `server.py` 這條會走到 `graphrag.store` 的鏈,
+     所以這個全域污染從來沒被暴露過
+  2. **這次刻意選擇不修**,不是漏掉:討論過「範圍外問題該記錄還是直接改」
+     的判準,結論是預設記錄,只有「有邊界的嘗試性修復」證明真的是小範圍
+     才直接修——這則還沒做過那個嘗試,先如實記錄,避免在跟這次任務不相關
+     的檔案上開一個新的修改範圍
+  3. 下一個要處理它的人:先只改 `test_ingestion.py` 的 `sys.modules` 清理
+     方式(例如測試結束後還原、或改用 `monkeypatch.setitem` 讓 pytest
+     自動復原),跑一次全專案 `pytest`。如果一次就綠燈,直接修掉；如果又
+     扯出另一個不相干的失敗,停手退回這裡繼續只記錄
+- **關聯**：（無)
+- **日期**：2026-08-08
