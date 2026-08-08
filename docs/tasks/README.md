@@ -11,3 +11,4 @@
 | 日期 | 任務 | 涉及範圍 | 一句話 |
 |---|---|---|---|
 | 2026-08-06 | [掛入 claude-sandbox 開發規範並實測](2026-08-06-sandbox-落地與實測.md) | 根 `CLAUDE.md`、`docs/`、`claude-sandbox/` submodule | 拿這個專案當規範的第一個真實案例,把踩到的問題回饋給 sandbox |
+| 2026-08-08 | [遷移到 mcp SDK v2 API](2026-08-08-mcp-v2-遷移.md) | `pyproject.toml`、`src/server.py`、`src/http_server.py`、`src/protocol/base_server.py`、`tests/` | `K-4` 的長期解法:把 v1 decorator API 換成 v2 建構子 callback API |
