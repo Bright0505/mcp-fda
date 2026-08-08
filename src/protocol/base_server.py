@@ -15,29 +15,27 @@ class BaseMCPServer:
     def __init__(self, server_name: str = None):
         if server_name is None:
             server_name = os.getenv("MCP_SERVER_NAME", "mcp-fda")
-        self.server = Server(server_name)
-        self._setup_handlers()
+        self.server = Server(
+            server_name,
+            on_list_tools=self._on_list_tools,
+            on_call_tool=self._on_call_tool,
+            on_list_prompts=self._on_list_prompts,
+            on_list_resources=self._on_list_resources,
+        )
         logger.info(f"Initialized {server_name} MCP server")
 
-    def _setup_handlers(self):
-        """Setup MCP protocol handlers."""
+    async def _on_list_tools(self, ctx, params):
+        return {"tools": get_all_tools()}
 
-        @self.server.list_tools()
-        async def list_tools():
-            return get_all_tools()
+    async def _on_call_tool(self, ctx, params):
+        request = type('CallToolRequest', (), {
+            'name': params.name,
+            'arguments': params.arguments or {}
+        })()
+        return await handle_tool_call(request, None)
 
-        @self.server.call_tool()
-        async def call_tool(name: str, arguments: dict):
-            request = type('CallToolRequest', (), {
-                'name': name,
-                'arguments': arguments or {}
-            })()
-            return await handle_tool_call(request, None)
+    async def _on_list_prompts(self, ctx, params):
+        return {"prompts": []}
 
-        @self.server.list_prompts()
-        async def list_prompts():
-            return []
-
-        @self.server.list_resources()
-        async def list_resources():
-            return []
+    async def _on_list_resources(self, ctx, params):
+        return {"resources": []}

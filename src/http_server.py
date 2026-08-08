@@ -8,14 +8,13 @@ from contextlib import asynccontextmanager
 import logging
 import os
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from fastapi import FastAPI
 import uvicorn
 
 from mcp.server import Server
 from mcp.server.sse import SseServerTransport
-from mcp.types import Tool, Prompt, Resource
 
 from tools import ToolRegistry, get_all_tools
 from api.middleware import setup_middleware
@@ -30,10 +29,14 @@ class MCPHTTPServer:
         self.tool_registry = ToolRegistry()
 
         self.server_name = os.getenv("MCP_SERVER_NAME", "mcp-fda")
-        self.mcp_server = Server(self.server_name)
+        self.mcp_server = Server(
+            self.server_name,
+            on_list_tools=self._on_list_tools,
+            on_call_tool=self._on_call_tool,
+            on_list_prompts=self._on_list_prompts,
+            on_list_resources=self._on_list_resources,
+        )
         self.sse_transport = SseServerTransport("/messages")
-
-        self._setup_mcp_handlers()
 
         @asynccontextmanager
         async def lifespan(app: FastAPI):
@@ -84,35 +87,29 @@ class MCPHTTPServer:
 
         self._register_routes()
 
-    def _setup_mcp_handlers(self):
-        """Setup MCP protocol handlers."""
+    async def _on_list_tools(self, ctx, params):
+        return {"tools": get_all_tools()}
 
-        @self.mcp_server.list_tools()
-        async def list_tools() -> List[Tool]:
-            return get_all_tools()
+    async def _on_call_tool(self, ctx, params):
+        try:
+            request = type('CallToolRequest', (), {
+                'name': params.name,
+                'arguments': params.arguments or {}
+            })()
+            result = await self.tool_registry.handle_tool(request, None)
+            if isinstance(result, dict) and "content" in result:
+                return result
+            content = result if isinstance(result, list) else [result]
+            return {"content": content}
+        except Exception as e:
+            logger.error(f"Tool execution error: {e}")
+            return {"content": [{"type": "text", "text": f"Error: {str(e)}"}]}
 
-        @self.mcp_server.call_tool()
-        async def handle_tool_call(name: str, arguments: dict) -> list:
-            try:
-                request = type('CallToolRequest', (), {
-                    'name': name,
-                    'arguments': arguments or {}
-                })()
-                result = await self.tool_registry.handle_tool(request, None)
-                if isinstance(result, dict) and "content" in result:
-                    return result["content"]
-                return result if isinstance(result, list) else [result]
-            except Exception as e:
-                logger.error(f"Tool execution error: {e}")
-                return [{"type": "text", "text": f"Error: {str(e)}"}]
+    async def _on_list_prompts(self, ctx, params):
+        return {"prompts": []}
 
-        @self.mcp_server.list_prompts()
-        async def list_prompts() -> List[Prompt]:
-            return []
-
-        @self.mcp_server.list_resources()
-        async def list_resources() -> List[Resource]:
-            return []
+    async def _on_list_resources(self, ctx, params):
+        return {"resources": []}
 
     def _register_routes(self):
         """Register API routes."""
