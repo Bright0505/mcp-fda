@@ -96,3 +96,36 @@ grep -n "交互作用" docs/KNOWN-ISSUES.md
 > / `scripts/seed_fda.py`」——**那不是條目寫錯,正是本則描述的遮蔽現象本身**。
 > 容器帶著修正重建之後這兩筆會自動消失。若重建後仍然報,才代表那兩個檔案
 > 真的不見了,那時要照判準去查。
+
+### K-4 `mcp` 相依沒有版本上限,今天全新安裝直接壞掉
+
+- **影響範圍**：`pyproject.toml`(`dependencies` 的 `mcp` 這行)、
+  `src/server.py`、`src/http_server.py`、`src/protocol/base_server.py`
+  (三個入口檔案都用同一種 handler 註冊寫法)
+- **狀態**：已修（無守備）—— 已加上版本上限,症狀確認消失,但沒有任何
+  測試守住這個入口層(見下方判準第 2 點),所以**上限被鬆綁或移除的話,
+  這個問題會原樣復發而不會被 CI 抓到**
+- **症狀**：`pyproject.toml` 原本宣告 `mcp>=1.13.1`,沒有上限。實測:乾淨
+  環境 `pip install -e ".[dev]"` 裝出來的是 `mcp==2.0.0`,接著
+  `from mcp.server import Server; Server("x").list_tools()` 直接
+  `AttributeError: 'Server' object has no attribute 'list_tools'`。
+  `src/server.py`、`src/http_server.py`、`src/protocol/base_server.py`
+  三個對外入口都用 `@server.list_tools()` 這種 decorator 註冊 handler,
+  全部會在啟動時炸掉
+- **根因**：`mcp` SDK 從 1.x 到 2.0.0(2026-07-28 發布)是官方明文的
+  breaking change 大版號跳動——低階 `Server` 整個重寫,decorator 式
+  handler 註冊改成建構子傳 `on_list_tools=` 等 callback。`pyproject.toml`
+  沒有上限,加上沒有 lockfile,所以「今天裝出來是什麼版本」完全取決於
+  安裝當下 PyPI 上有什麼,不是取決於這個 repo 的任何一次 commit
+- **判準**：
+  1. 浮動下限(`>=x.y.z` 沒有上限)在相依套件發生 breaking major bump 時,
+     會讓「同一份 `pyproject.toml`」在不同時間點裝出行為完全不同的東西——
+     改動或稽核相依版本前,先實際裝一次、量測解出來的版本,不要只讀
+     `pyproject.toml` 推論
+  2. `pytest` 31 passed 跟這個 bug 完全共存過——現有測試套件對
+     `server.py`/`http_server.py`/`protocol/base_server.py` 這三個入口
+     檔案零覆蓋,綠燈不代表這一層沒事
+  3. 這只是**暫時擋血**(釘 `mcp>=1.13.1,<2`),不是遷移到 v2 API。
+     真的遷移是規模更大的獨立任務,見 `docs/tasks/`(待建檔)
+- **關聯**：（無)
+- **日期**：2026-08-08
