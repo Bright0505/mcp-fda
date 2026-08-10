@@ -3,16 +3,11 @@
 import asyncio
 import logging
 import os
-from typing import List, Optional
+from typing import Optional
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import (
-    CallToolRequest,
-    Tool,
-    Prompt,
-    Resource
-)
+from mcp.types import CallToolRequest
 
 from tools.registry import ToolRegistry
 from tools.definitions import DB_TOOLS as TOOLS_DEFINITIONS
@@ -51,30 +46,36 @@ async def handle_call_tool(request: CallToolRequest) -> dict:
         }
 
 
+async def on_list_tools(ctx, params) -> dict:
+    return {"tools": TOOLS_DEFINITIONS}
+
+
+async def on_call_tool(ctx, params) -> dict:
+    request = type('CallToolRequest', (), {
+        'name': params.name,
+        'arguments': params.arguments or {}
+    })()
+    return await handle_call_tool(request)
+
+
+async def on_list_prompts(ctx, params) -> dict:
+    return {"prompts": []}
+
+
+async def on_list_resources(ctx, params) -> dict:
+    return {"resources": []}
+
+
 async def main():
     """Main server entry point."""
     server_name = os.getenv("MCP_SERVER_NAME", "mcp-fda")
-    server = Server(server_name)
-
-    @server.list_tools()
-    async def list_tools() -> List[Tool]:
-        return TOOLS_DEFINITIONS
-
-    @server.call_tool()
-    async def call_tool(name: str, arguments: Optional[dict] = None) -> dict:
-        request = type('CallToolRequest', (), {
-            'name': name,
-            'arguments': arguments or {}
-        })()
-        return await handle_call_tool(request)
-
-    @server.list_prompts()
-    async def list_prompts() -> List[Prompt]:
-        return []
-
-    @server.list_resources()
-    async def list_resources() -> List[Resource]:
-        return []
+    server = Server(
+        server_name,
+        on_list_tools=on_list_tools,
+        on_call_tool=on_call_tool,
+        on_list_prompts=on_list_prompts,
+        on_list_resources=on_list_resources,
+    )
 
     logger.info(f"Starting MCP FDA Server ({server_name})...")
     async with stdio_server() as (read_stream, write_stream):
