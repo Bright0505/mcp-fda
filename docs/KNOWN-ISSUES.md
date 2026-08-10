@@ -17,8 +17,11 @@ grep -n "交互作用" docs/KNOWN-ISSUES.md
 ### K-1 `requires-python` 下限過期,實際依賴需要 3.10+
 
 - **影響範圍**：`pyproject.toml`(`requires-python`、`[tool.black]` 與 `[tool.ruff]` 的 `target-version`)
-- **狀態**：未處理
-- **症狀**：`pyproject.toml:12` 宣告 `requires-python = ">=3.8"`,`target-version = py38`
+- **狀態**：**已修(2026-08-10)**——`docs/tasks/2026-08-08-mcp-v2-遷移.md` 的 C1
+  已把 `requires-python` 改成 `>=3.10`,`[tool.black]`/`[tool.ruff]` 的
+  `target-version` 同步改成 `py310`。下方症狀描述的是修復前的狀態,保留
+  不改(禁令 8)
+- **症狀(修復前)**：`pyproject.toml:12` 宣告 `requires-python = ">=3.8"`,`target-version = py38`
   (第 51、57 行),但已安裝的 `mcp` 2.0.0 實際宣告 `Requires-Python: >=3.10`
   (`importlib.metadata.metadata('mcp').get('Requires-Python')` 量到)。
   在 Python 3.8/3.9 環境下 `pip install` 不會報錯,pip 解析器會靜默回退安裝遠舊於
@@ -162,4 +165,24 @@ grep -n "交互作用" docs/KNOWN-ISSUES.md
      自動復原),跑一次全專案 `pytest`。如果一次就綠燈,直接修掉；如果又
      扯出另一個不相干的失敗,停手退回這裡繼續只記錄
 - **關聯**：與 K-4 同一個任務(`2026-08-08-mcp-v2-遷移.md`)發現
+- **日期**：2026-08-08
+
+### K-6 `http_server.py` 呼叫不存在的工具時回傳 `{"content": [None]}`,跟另外兩個入口的錯誤訊息不一致
+
+- **影響範圍**：`src/http_server.py` 的 `_on_call_tool`(遷移前是
+  `_setup_mcp_handlers` 裡的 `handle_tool_call`)
+- **狀態**：未處理——遷移到 v2 API 時發現,判斷不是這次變更清單(C1-C5)
+  的範圍,沒有修
+- **症狀**：透過 HTTP/SSE 入口呼叫一個沒註冊的工具名稱,拿到的回應是
+  `{"content": [None]}`,不是有意義的錯誤訊息。`src/server.py`、
+  `src/protocol/base_server.py` 兩個入口走的是共用的
+  `tools/handlers/__init__.py::handle_tool_call`,對同樣情況會回傳
+  `{"content": [{"type": "text", "text": "Unknown tool: xxx"}]}`
+- **根因**：`http_server.py` 沒有走共用的 `handle_tool_call`,自己寫了一份
+  重複邏輯,`ToolRegistry.handle_tool()` 對未註冊工具回傳 `None` 時,
+  這份重複邏輯沒有像共用版本那樣特判 `None`,直接包成 `[None]`
+- **判準**：這是遷移前就存在的行為(`git show main:src/http_server.py`
+  查證過,不是這次 v1→v2 API 改動造成的迴歸),只是遷移時把回傳形狀從
+  裸 list 包成 dict,順帶讓這個既有毛病更容易被人注意到
+- **關聯**：（無)
 - **日期**：2026-08-08
