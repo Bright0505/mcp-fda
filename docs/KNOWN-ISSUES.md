@@ -163,14 +163,24 @@ grep -n "交互作用" docs/KNOWN-ISSUES.md
   1. 這是既有問題,不是任何一次新改動造成的——只是在這次之前,完全沒有
      測試真的 import 過 `server.py` 這條會走到 `graphrag.store` 的鏈,
      所以這個全域污染從來沒被暴露過
-  2. **這次刻意選擇不修**,不是漏掉:討論過「範圍外問題該記錄還是直接改」
-     的判準,結論是預設記錄,只有「有邊界的嘗試性修復」證明真的是小範圍
-     才直接修——這則還沒做過那個嘗試,先如實記錄,避免在跟這次任務不相關
-     的檔案上開一個新的修改範圍
-  3. 下一個要處理它的人:先只改 `test_ingestion.py` 的 `sys.modules` 清理
-     方式(例如測試結束後還原、或改用 `monkeypatch.setitem` 讓 pytest
-     自動復原),跑一次全專案 `pytest`。如果一次就綠燈,直接修掉；如果又
-     扯出另一個不相干的失敗,停手退回這裡繼續只記錄
+  2. **已做過一次有邊界的嘗試性修復,確認不是小問題**(2026-08-10):在
+     `test_ingestion.py` 加一個 `teardown_module`,測試結束後
+     `sys.modules.pop("graphrag.store", None)` 等三個 key——結果**沒有
+     解決**,全專案 `pytest` 仍是同一個 `ImportError`。已還原(`git
+     checkout -- tests/unit/test_ingestion.py`),沒有留下痕跡
+  3. **失敗的真正原因**:pytest 預設先「collect」(import)完所有測試檔案,
+     才開始「執行」任何一個測試。`test_ingestion.py` 的 `sys.modules`
+     污染發生在它自己被 collect 的當下;`test_mcp_entrypoints.py` 的
+     `ImportError` 也發生在它被 collect 的當下——兩者都在**同一個
+     collect 階段**,遠早於 `teardown_module` 這種「測試執行完才觸發」
+     的 hook。用 `pytest --collect-only` 重現過,不需要真的執行任何測試
+     案例就已經炸,證實問題出在 collect 階段,不是 test 執行階段
+  4. 真正能修的方式需要動到 collect 階段本身(例如 `conftest.py` 的
+     `pytest_collectstart` hook,或把 `test_ingestion.py` 的
+     `sys.modules` 污染從「模組頂層執行」改成「用
+     `unittest.mock.patch.dict` 包住每個測試函式」)——**兩種都不是
+     單一檔案內的小改動**,符合「嘗試會擴散,停手退回只記錄」的判準,
+     這則正式維持未處理
 - **關聯**：與 K-4 同一個任務(`2026-08-08-mcp-v2-遷移.md`)發現
 - **日期**：2026-08-08
 
