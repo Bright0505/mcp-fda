@@ -17,10 +17,12 @@ grep -n "交互作用" docs/KNOWN-ISSUES.md
 ### K-1 `requires-python` 下限過期,實際依賴需要 3.10+
 
 - **影響範圍**：`pyproject.toml`(`requires-python`、`[tool.black]` 與 `[tool.ruff]` 的 `target-version`)
-- **狀態**：**已修(2026-08-10)**——`docs/tasks/2026-08-08-mcp-v2-遷移.md` 的 C1
-  已把 `requires-python` 改成 `>=3.10`,`[tool.black]`/`[tool.ruff]` 的
+- **狀態**：**已修(無守備)(2026-08-10)**——`docs/tasks/2026-08-08-mcp-v2-遷移.md`
+  的 C1 已把 `requires-python` 改成 `>=3.10`,`[tool.black]`/`[tool.ruff]` 的
   `target-version` 同步改成 `py310`。下方症狀描述的是修復前的狀態,保留
-  不改(禁令 8)
+  不改(禁令 8)。標「無守備」是因為沒有任何測試會去比對
+  `requires-python` 跟 `mcp` 實際的 `Requires-Python` 是否一致——如果以後
+  又漂移,不會被 `pytest` 抓到,只能靠下次手動量測才會發現
 - **症狀(修復前)**：`pyproject.toml:12` 宣告 `requires-python = ">=3.8"`,`target-version = py38`
   (第 51、57 行),但已安裝的 `mcp` 2.0.0 實際宣告 `Requires-Python: >=3.10`
   (`importlib.metadata.metadata('mcp').get('Requires-Python')` 量到)。
@@ -110,6 +112,11 @@ grep -n "交互作用" docs/KNOWN-ISSUES.md
   PR。症狀消失,且 `docs/tasks/2026-08-08-mcp-v2-遷移.md` 的 C5 已經補上這三個
   入口檔案的測試,原本判準第 2 點講的「零覆蓋」也一併解決,不再是「已修
   (無守備)」
+- **守備**：`tests/unit/test_mcp_entrypoints.py`(全部 7 則,涵蓋三個入口
+  檔案的 `Server`/`BaseMCPServer`/`MCPHTTPServer` 建構與四個 handler 的
+  回傳形狀;突變驗證:把三個入口檔案換回 v1 decorator 寫法
+  → 全部 7 則轉紅 `AttributeError: 'Server' object has no attribute
+  'list_tools'`,換回 v2 建構子 callback 寫法 → 全部轉綠)
 - **症狀**：`pyproject.toml` 原本宣告 `mcp>=1.13.1`,沒有上限。實測:乾淨
   環境 `pip install -e ".[dev]"` 裝出來的是 `mcp==2.0.0`,接著
   `from mcp.server import Server; Server("x").list_tools()` 直接
