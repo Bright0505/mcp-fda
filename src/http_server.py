@@ -56,7 +56,7 @@ class MCPHTTPServer:
         self.app = FastAPI(
             title="MCP FDA Drug Interaction API",
             description="REST API & MCP Streamable HTTP for FDA Drug Interaction Checker",
-            version="1.0.0",
+            version="2.0.0",
             docs_url="/docs",
             redoc_url="/redoc",
             lifespan=lifespan
@@ -103,7 +103,7 @@ class MCPHTTPServer:
         async def root():
             return {
                 "name": "MCP FDA Drug Interaction Server",
-                "version": "1.0.0",
+                "version": "2.0.0",
                 "endpoints": {
                     "health": "/api/v1/health",
                     "tools": "/api/v1/tools",
@@ -117,7 +117,7 @@ class MCPHTTPServer:
             return {
                 "status": "healthy",
                 "timestamp": datetime.now().isoformat(),
-                "version": "1.0.0"
+                "version": "2.0.0"
             }
 
         @self.app.get("/api/v1/tools")

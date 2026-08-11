@@ -1,6 +1,6 @@
 # 美國 FDA 藥品交互作用查詢 MCP 伺服器
 
-[![Python](https://img.shields.io/badge/python-3.8+-green.svg)](https://python.org)
+[![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](LICENSE)
 [![MCP](https://img.shields.io/badge/MCP-compatible-blue.svg)](https://modelcontextprotocol.io)
 
@@ -99,11 +99,11 @@ python src/main.py --http
 不設定 `LLM_API_KEY` → **直通模式**，FDA 原文由 Claude 處理。
 設定 `LLM_API_KEY` → **提取模式**，mcp-fda 自行萃取並建立圖譜。
 
-### Open WebUI / MCPO（SSE）
+### Open WebUI / MCPO（Streamable HTTP）
 
 ```bash
 # docker compose 啟動後，MCPO 指向：
-http://localhost:8000/sse/
+http://localhost:8000/mcp
 ```
 
 ---
@@ -286,4 +286,4 @@ SOFTWARE.
 
 ---
 
-**版本**：v1.1.0 | **最後更新**：2026-04-16
+**版本**：v2.0.0 | **最後更新**：2026-08-11
