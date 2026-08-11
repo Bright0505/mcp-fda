@@ -1,9 +1,10 @@
 """HTTP server wrapper for FDA Drug Interaction MCP Server.
 
-Provides REST API access and MCP SSE (Server-Sent Events) support.
+Provides REST API access and MCP Streamable HTTP support.
 """
 
 import asyncio
+import contextlib
 from contextlib import asynccontextmanager
 import logging
 import os
@@ -14,7 +15,6 @@ from fastapi import FastAPI
 import uvicorn
 
 from mcp.server import Server
-from mcp.server.sse import SseServerTransport
 
 from tools import ToolRegistry, get_all_tools
 from api.middleware import setup_middleware
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 class MCPHTTPServer:
-    """HTTP server wrapper for FDA drug interaction MCP tools with SSE support."""
+    """HTTP server wrapper for FDA drug interaction MCP tools with Streamable HTTP support."""
 
     def __init__(self):
         self.tool_registry = ToolRegistry()
@@ -36,49 +36,34 @@ class MCPHTTPServer:
             on_list_prompts=self._on_list_prompts,
             on_list_resources=self._on_list_resources,
         )
-        self.sse_transport = SseServerTransport("/messages")
+        # host= 用來讓 SDK 判斷要不要自動開 DNS-rebinding 保護(只在
+        # 127.0.0.1/localhost/::1 時自動開)。不傳的話預設是 127.0.0.1,
+        # 會誤判成本機開發、限制 Host header,但實際部署通常綁 0.0.0.0。
+        # 讀 HTTP_HOST 就好,跟原本 SSE 一樣不做額外限制,不擴大這次變更範圍
+        mcp_asgi_app = self.mcp_server.streamable_http_app(
+            streamable_http_path="/",
+            host=os.getenv("HTTP_HOST", "0.0.0.0"),
+        )
 
         @asynccontextmanager
         async def lifespan(app: FastAPI):
-            logger.info("FDA MCP server started")
-            yield
-            logger.info("FDA MCP server shutting down")
+            async with contextlib.AsyncExitStack() as stack:
+                await stack.enter_async_context(self.mcp_server.session_manager.run())
+                logger.info("FDA MCP server started")
+                yield
+                logger.info("FDA MCP server shutting down")
 
         self.app = FastAPI(
             title="MCP FDA Drug Interaction API",
-            description="REST API & SSE for FDA Drug Interaction Checker via MCP",
+            description="REST API & MCP Streamable HTTP for FDA Drug Interaction Checker",
             version="1.0.0",
             docs_url="/docs",
             redoc_url="/redoc",
             lifespan=lifespan
         )
 
-        # Mount MCP SSE ASGI sub-app
-        async def mcp_sse_asgi_app(scope, receive, send):
-            path = scope.get("path", "/")
-            method = scope.get("method", "GET")
-
-            if path == "/sse/" and method == "GET":
-                async with self.sse_transport.connect_sse(scope, receive, send) as streams:
-                    await self.mcp_server.run(
-                        streams[0],
-                        streams[1],
-                        self.mcp_server.create_initialization_options()
-                    )
-            elif path.startswith("/sse/messages") and method == "POST":
-                await self.sse_transport.handle_post_message(scope, receive, send)
-            else:
-                await send({
-                    'type': 'http.response.start',
-                    'status': 404,
-                    'headers': [[b'content-type', b'text/plain']],
-                })
-                await send({
-                    'type': 'http.response.body',
-                    'body': b'Not Found',
-                })
-
-        self.app.mount("/sse", mcp_sse_asgi_app)
+        # Mount MCP Streamable HTTP sub-app
+        self.app.mount("/mcp", mcp_asgi_app)
 
         # Apply middleware (CORS, GZip, rate limiting)
         from core.config import AppConfig
@@ -122,7 +107,7 @@ class MCPHTTPServer:
                 "endpoints": {
                     "health": "/api/v1/health",
                     "tools": "/api/v1/tools",
-                    "mcp_sse": "/sse/",
+                    "mcp": "/mcp",
                     "docs": "/docs"
                 }
             }
@@ -178,9 +163,9 @@ def run_http_server(host: str = "0.0.0.0", port: int = 8000):
             format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
         )
 
-        logger.info(f"Starting MCP FDA HTTP API + SSE server at http://{host}:{port}")
+        logger.info(f"Starting MCP FDA HTTP API + Streamable HTTP server at http://{host}:{port}")
         logger.info(f"API docs: http://{host}:{port}/docs")
-        logger.info(f"MCP SSE endpoint: http://{host}:{port}/sse")
+        logger.info(f"MCP Streamable HTTP endpoint: http://{host}:{port}/mcp")
 
         config_uvicorn = uvicorn.Config(
             server.app,

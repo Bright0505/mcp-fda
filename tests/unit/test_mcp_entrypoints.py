@@ -7,6 +7,8 @@ BaseModel、要嘛是 dict、要嘛是 None(mcp.server.runner._dump_result),
 完全零測試覆蓋(K-4),這是修這個「無守備」缺口的部分。
 """
 
+import httpx
+
 import server as server_mod
 from protocol.base_server import BaseMCPServer
 from http_server import MCPHTTPServer
@@ -91,3 +93,44 @@ async def test_http_server_handlers_return_dict_not_list():
 
     assert await http._on_list_prompts(None, None) == {"prompts": []}
     assert await http._on_list_resources(None, None) == {"resources": []}
+
+
+def test_http_server_mounts_streamable_http_not_sse():
+    """棄用 SSE 改 Streamable HTTP 後,/mcp 要掛上去、/sse 不該再出現。"""
+    http = MCPHTTPServer()
+    paths = [route.path for route in http.app.routes]
+    assert "/mcp" in paths
+    assert not any(p.startswith("/sse") for p in paths)
+    assert not hasattr(http, "sse_transport")
+
+
+async def test_http_server_streamable_http_handles_real_initialize_handshake():
+    """/mcp 端點要能真的走完一次 MCP initialize 交握,不是只確認沒有 404。"""
+    http = MCPHTTPServer()
+    transport = httpx.ASGITransport(app=http.app)
+
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", follow_redirects=True
+    ) as client:
+        async with http.app.router.lifespan_context(http.app):
+            response = await client.post(
+                "/mcp",
+                headers={
+                    "Accept": "application/json, text/event-stream",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "jsonrpc": "2.0",
+                    "method": "initialize",
+                    "id": 1,
+                    "params": {
+                        "protocolVersion": "2025-06-18",
+                        "capabilities": {},
+                        "clientInfo": {"name": "test", "version": "1"},
+                    },
+                },
+            )
+
+    assert response.status_code == 200
+    assert '"serverInfo"' in response.text
+    assert '"capabilities"' in response.text
