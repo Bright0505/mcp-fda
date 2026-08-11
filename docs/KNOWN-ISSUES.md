@@ -16,13 +16,16 @@ grep -n "交互作用" docs/KNOWN-ISSUES.md
 
 ### K-1 `requires-python` 下限過期,實際依賴需要 3.10+
 
-- **影響範圍**：`pyproject.toml`(`requires-python`、`[tool.black]` 與 `[tool.ruff]` 的 `target-version`)
-- **狀態**：**已修(無守備)(2026-08-10)**——`docs/tasks/2026-08-08-mcp-v2-遷移.md`
-  的 C1 已把 `requires-python` 改成 `>=3.10`,`[tool.black]`/`[tool.ruff]` 的
-  `target-version` 同步改成 `py310`。下方症狀描述的是修復前的狀態,保留
-  不改(禁令 8)。標「無守備」是因為沒有任何測試會去比對
-  `requires-python` 跟 `mcp` 實際的 `Requires-Python` 是否一致——如果以後
-  又漂移,不會被 `pytest` 抓到,只能靠下次手動量測才會發現
+- **影響範圍**：`pyproject.toml`(`requires-python`、`[tool.black]`／`[tool.ruff]`
+  的 `target-version`,**累加(2026-08-11)**：`[tool.mypy]` 的 `python_version`
+  當初也漏改,這次補上——原本「影響範圍」就沒列全,不是修復時漏做)
+- **狀態**：**已修(無守備)(2026-08-10,2026-08-11 補漏)**——
+  `docs/tasks/2026-08-08-mcp-v2-遷移.md` 的 C1 已把 `requires-python` 改成
+  `>=3.10`,`[tool.black]`/`[tool.ruff]` 的 `target-version` 同步改成
+  `py310`。下方症狀描述的是修復前的狀態,保留不改(禁令 8)。標「無守備」
+  是因為沒有任何測試會去比對 `requires-python` 跟 `mcp` 實際的
+  `Requires-Python` 是否一致——如果以後又漂移,不會被 `pytest` 抓到,
+  只能靠下次手動量測才會發現
 - **症狀(修復前)**：`pyproject.toml:12` 宣告 `requires-python = ">=3.8"`,`target-version = py38`
   (第 51、57 行),但已安裝的 `mcp` 2.0.0 實際宣告 `Requires-Python: >=3.10`
   (`importlib.metadata.metadata('mcp').get('Requires-Python')` 量到)。
