@@ -1,7 +1,10 @@
 """SQLite GraphRAG 儲存後端（預設）。
 
 使用 aiosqlite 非同步驅動，零外部服務依賴。
-資料庫路徑由 GRAPHRAG_SQLITE_PATH 控制（預設 /app/data/graphrag.db）。
+資料庫路徑由 GRAPHRAG_SQLITE_PATH 控制（預設 ./data/graphrag.db，相對於
+執行時的工作目錄——本機開發解析成 repo 根目錄下的 data/，Docker 因為
+WORKDIR 是 /app，解析成 /app/data/，跟 docker-compose.yml 掛的
+mcp_fda_data volume 對齊）。
 """
 
 import json
@@ -70,7 +73,7 @@ class SQLiteGraphRAGStore(GraphRAGStore):
     """SQLite 實作，每個連線使用 WAL journal mode 提升讀寫並行能力。"""
 
     def __init__(self) -> None:
-        self._path = os.getenv("GRAPHRAG_SQLITE_PATH", "/app/data/graphrag.db")
+        self._path = os.getenv("GRAPHRAG_SQLITE_PATH", "./data/graphrag.db")
         self._conn: Optional[aiosqlite.Connection] = None
 
     async def _get_conn(self) -> aiosqlite.Connection:
