@@ -1,8 +1,22 @@
 # 任務：把 mcp-drug 的 GraphRAG 萃取修正移植到 mcp-fda
 
 **建立日期**：2026-08-14
-**狀態**：未開始
+**狀態**：已完成
 **交接來源**：mcp-drug 的萃取管線修正（同日完成並驗證）
+
+**移植結果**（2026-08-14，Digoxin 標竿，真實 FDA + LLM）：
+
+| | 應達到 | 實測 |
+|---|---|---|
+| 萃取筆數 | 80+ 筆 | **94 筆**（drug 73／supplement 8／food 1／class 12） |
+| `St. John's Wort` | ✅ 且 `entity_type=supplement` | ✅ `decreases_effect`／`moderate` |
+| 截斷 | 日誌無「無法救回」 | 第 2/4 段觸發一次細分重跑，成功救回，無救援失敗 |
+
+單元測試：39 個既有測試全數通過（逐檔跑）；`test_mcp_entrypoints.py` 與其他檔案
+一起跑會因 `test_ingestion.py` 的 `sys.modules` stub 污染而失敗——`git stash`
+掉本次改動後重跑同一組合，同樣失敗，確認是既有的測試隔離問題，非本次改動造成。
+`test_check_known_issues_links.py` 因 `claude-sandbox` 子模組未 checkout 而無法收集，
+與本次改動無關。
 
 > 📍 **路徑說明**：本文提到的 `modules/mcp-drug/...` 是**主 repo 工作區**的路徑
 > （`/workspace/modules/mcp-drug/`）。若你只 clone 了 mcp-fda 這個 repo 就讀不到，

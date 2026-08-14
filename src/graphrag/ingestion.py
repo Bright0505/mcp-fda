@@ -155,6 +155,7 @@ async def ingest_drug(
         relation = item.get("relation", "interacts_with")
         severity = item.get("severity", "unknown")
         evidence = item.get("evidence", "")[:2000]
+        entity_type = str(item.get("entity_type") or "drug").strip().lower()
 
         if not drug_2_name or not evidence:
             continue
@@ -164,8 +165,10 @@ async def ingest_drug(
             "increases_effect", "decreases_effect", "monitor_closely"
         }
         valid_severities = {"major", "moderate", "minor", "unknown"}
+        valid_entity_types = {"drug", "supplement", "food", "class"}
         relation = relation if relation in valid_relations else "interacts_with"
         severity = severity if severity in valid_severities else "unknown"
+        entity_type = entity_type if entity_type in valid_entity_types else "drug"
 
         # upsert drug_2 實體
         drug_2_norm = normalize(drug_2_name)
@@ -183,6 +186,7 @@ async def ingest_drug(
             severity=severity,
             description_id=str(desc_id),
             evidence_snippet=evidence,
+            entity_type=entity_type,
         )
         count += 1
 
