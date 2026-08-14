@@ -83,8 +83,11 @@ def format_markdown_report(
     lines.append("### 已知交互作用（FDA 知識圖譜）")
     if graph_results:
         severity_icon = {"major": "🔴", "moderate": "🟠", "minor": "🟡", "unknown": "⚪"}
-        lines.append("| 藥品 A | 藥品 B | 關係 | 嚴重度 | 摘要 |")
-        lines.append("|--------|--------|------|--------|------|")
+        # 類別標記：仿單的交互作用段落不只寫藥品，也寫補充劑、草藥與食物。
+        # 標出來，讀者才知道哪一條是「與保健食品」而不是「與另一種處方藥」。
+        type_icon = {"supplement": "🌿", "food": "🍽", "class": "📚"}
+        lines.append("| 藥品 A | 交互作用對象 | 類別 | 關係 | 嚴重度 | 摘要 |")
+        lines.append("|--------|--------------|------|------|--------|------|")
         for row in graph_results:
             d1 = row.get("drug_1", "")
             d1cn = row.get("drug_1_cn") or ""
@@ -96,7 +99,12 @@ def format_markdown_report(
             sev = row.get("severity", "unknown")
             icon = severity_icon.get(sev, "⚪")
             snippet = (row.get("evidence_snippet") or "")[:80].replace("|", "\\|")
-            lines.append(f"| {d1_display} | {d2_display} | {rel} | {icon} {sev} | {snippet}... |")
+            etype = (row.get("entity_type") or "drug").lower()
+            etype_cell = f"{type_icon.get(etype, '💊')} {etype}"
+            lines.append(
+                f"| {d1_display} | {d2_display} | {etype_cell} | {rel} "
+                f"| {icon} {sev} | {snippet}... |"
+            )
     else:
         lines.append("_圖譜中無已知交互作用記錄。（若資料尚未擷取，可使用 drug_ingest_fda 觸發）_")
 

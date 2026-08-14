@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS graphrag_drug_interactions (
     drug_2_id        INTEGER REFERENCES graphrag_drug_entities(entity_id),
     relation         TEXT NOT NULL,                  -- 'interacts_with' | 'contraindicated' | ...
     severity         TEXT,                           -- 'major' | 'moderate' | 'minor' | 'unknown'
+    entity_type      TEXT DEFAULT 'drug',            -- 'drug' | 'supplement' | 'food' | 'class'
     description_id   TEXT NOT NULL,                  -- UUID as TEXT
     evidence_snippet TEXT,
     extracted_at     TEXT NOT NULL DEFAULT (datetime('now'))

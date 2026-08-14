@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS graphrag_drug_interactions (
                      )),
     severity         TEXT                              -- 嚴重程度
                      CHECK (severity IN ('major', 'moderate', 'minor', 'unknown')),
+    entity_type      TEXT DEFAULT 'drug',               -- 'drug' | 'supplement' | 'food' | 'class'
     description_id   UUID NOT NULL,                    -- ChromaDB document id
     evidence_snippet TEXT,                             -- 500 字摘要，方便 SQL 預覽
     extracted_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()

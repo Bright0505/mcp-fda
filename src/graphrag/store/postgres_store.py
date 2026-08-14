@@ -196,17 +196,18 @@ class PostgreSQLGraphRAGStore(GraphRAGStore):
         severity: str,
         description_id: str,
         evidence_snippet: str,
+        entity_type: str = "drug",
     ) -> None:
         pool = await self._get_pool()
         await pool.execute(
             """
             INSERT INTO graphrag_drug_interactions
                 (drug_1_id, drug_2_name, drug_2_id, relation, severity,
-                 description_id, evidence_snippet, extracted_at)
-            VALUES ($1, $2, $3, $4, $5, $6::uuid, $7, NOW())
+                 entity_type, description_id, evidence_snippet, extracted_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7::uuid, $8, NOW())
             """,
             drug_1_id, drug_2_name, drug_2_id, relation, severity,
-            description_id, evidence_snippet[:500],
+            entity_type, description_id, evidence_snippet[:500],
         )
 
     async def graph_query(
@@ -230,6 +231,7 @@ class PostgreSQLGraphRAGStore(GraphRAGStore):
                 i.drug_2_name         AS drug_2,
                 e2.display_name_cn    AS drug_2_cn,
                 e2.in_local_whitelist AS drug_2_in_whitelist,
+                i.entity_type,
                 i.relation,
                 i.severity,
                 i.evidence_snippet,

@@ -73,8 +73,13 @@ class GraphRAGStore(ABC):
         severity: str,
         description_id: str,
         evidence_snippet: str,
+        entity_type: str = "drug",
     ) -> None:
-        """插入一筆交互作用關係。"""
+        """插入一筆交互作用關係。
+
+        `entity_type` 標示 drug_2 的類別（drug / supplement / food / class）。
+        預設 'drug' 讓既有呼叫端不受影響。
+        """
 
     @abstractmethod
     async def graph_query(

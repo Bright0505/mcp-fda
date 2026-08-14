@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS graphrag_drug_interactions (
     drug_2_id        INTEGER REFERENCES graphrag_drug_entities(entity_id),
     relation         TEXT NOT NULL,
     severity         TEXT,
+    entity_type      TEXT DEFAULT 'drug',            -- 'drug' | 'supplement' | 'food' | 'class'
     description_id   TEXT NOT NULL,
     evidence_snippet TEXT,
     extracted_at     TEXT NOT NULL DEFAULT (datetime('now'))
@@ -89,8 +90,25 @@ class SQLiteGraphRAGStore(GraphRAGStore):
     async def initialize(self) -> None:
         conn = await self._get_conn()
         await conn.executescript(_SQLITE_SCHEMA)
+        await self._migrate(conn)
         await conn.commit()
         logger.info(f"SQLite GraphRAG DB 初始化完成: {self._path}")
+
+    async def _migrate(self, conn) -> None:
+        """補上既有資料庫缺少的欄位。
+
+        `CREATE TABLE IF NOT EXISTS` 對已存在的表不做任何事，所以新增欄位必須另外
+        處理，否則既有部署會在 INSERT 時噴 `no such column`。逐欄檢查而不是記版本號，
+        是因為這個資料庫可以被 `init_graphrag_db.py` 重建，版本號反而會對不上。
+        """
+        cursor = await conn.execute("PRAGMA table_info(graphrag_drug_interactions)")
+        columns = {row[1] for row in await cursor.fetchall()}
+        if "entity_type" not in columns:
+            await conn.execute(
+                "ALTER TABLE graphrag_drug_interactions "
+                "ADD COLUMN entity_type TEXT DEFAULT 'drug'"
+            )
+            logger.info("migration: graphrag_drug_interactions 補上 entity_type 欄位")
 
     async def close(self) -> None:
         if self._conn is not None:
@@ -233,17 +251,18 @@ class SQLiteGraphRAGStore(GraphRAGStore):
         severity: str,
         description_id: str,
         evidence_snippet: str,
+        entity_type: str = "drug",
     ) -> None:
         conn = await self._get_conn()
         await conn.execute(
             """
             INSERT INTO graphrag_drug_interactions
                 (drug_1_id, drug_2_name, drug_2_id, relation, severity,
-                 description_id, evidence_snippet, extracted_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 entity_type, description_id, evidence_snippet, extracted_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (drug_1_id, drug_2_name, drug_2_id, relation, severity,
-             description_id, evidence_snippet[:500], _now_iso()),
+             entity_type, description_id, evidence_snippet[:500], _now_iso()),
         )
         await conn.commit()
 
@@ -269,6 +288,7 @@ class SQLiteGraphRAGStore(GraphRAGStore):
                 i.drug_2_name         AS drug_2,
                 e2.display_name_cn    AS drug_2_cn,
                 e2.in_local_whitelist AS drug_2_in_whitelist,
+                i.entity_type,
                 i.relation,
                 i.severity,
                 i.evidence_snippet,
